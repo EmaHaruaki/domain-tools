@@ -34,29 +34,31 @@ export default function DnsLookupPage() {
     }
 
     try {
-      const dnsResponse = await fetch(`https://dns.google/resolve?name=${domain}`)
-      if (!dnsResponse.ok) {
-        throw new Error(`Failed to fetch DNS records: ${dnsResponse.statusText}`)
-      }
-      const dnsData = await dnsResponse.json()
+      // 各レコードタイプごとにリクエスト
+      const [aRes, mxRes, txtRes, cnameRes] = await Promise.all([
+        fetch(`https://dns.google/resolve?name=${domain}&type=A`).then(r => r.json()),
+        fetch(`https://dns.google/resolve?name=${domain}&type=MX`).then(r => r.json()),
+        fetch(`https://dns.google/resolve?name=${domain}&type=TXT`).then(r => r.json()),
+        fetch(`https://dns.google/resolve?name=${domain}&type=CNAME`).then(r => r.json()),
+      ])
 
       const aRecords =
-        dnsData.Answer?.filter((record) => record.type === 1) // Type 1 is A record
+        aRes.Answer?.filter((record) => record.type === 1)
           .map((record) => ({ value: record.data })) || []
 
       const mxRecords =
-        dnsData.Answer?.filter((record) => record.type === 15) // Type 15 is MX record
+        mxRes.Answer?.filter((record) => record.type === 15)
           .map((record) => ({
             value: record.data.split(" ")[1],
             priority: Number.parseInt(record.data.split(" ")[0]),
           })) || []
 
       const txtRecords =
-        dnsData.Answer?.filter((record) => record.type === 16) // Type 16 is TXT record
+        txtRes.Answer?.filter((record) => record.type === 16)
           .map((record) => ({ value: record.data.replace(/"/g, "") })) || []
 
       const cnameRecords =
-        dnsData.Answer?.filter((record) => record.type === 5) // Type 5 is CNAME record
+        cnameRes.Answer?.filter((record) => record.type === 5)
           .map((record) => ({ value: record.data })) || []
 
       setResults({
