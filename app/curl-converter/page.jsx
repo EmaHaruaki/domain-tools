@@ -11,55 +11,41 @@ export default function CurlConverterPage() {
   const [curlOutput, setCurlOutput] = useState("")
   const [conversionType, setConversionType] = useState("winToUnix") // 'winToUnix' or 'unixToWin'
 
-  // PowerShell Invoke-WebRequest to Unix curl
-  const convertPowerShellToUnixCurl = (psCurl) => {
+  // Windows CMD curl to Unix curl
+  const convertCmdCurlToUnixCurl = (cmdCurl) => {
     let unixCurl = "curl"
     let url = ""
     let method = "GET"
     const headers = []
     let body = ""
 
-    // Extract URL
-    const uriMatch = psCurl.match(/-Uri\s+['"]?([^'"\s]+)['"]?/)
-    if (uriMatch) {
-      url = uriMatch[1]
-    } else {
-      // Try to find URL as first positional argument if not named
-      const firstArg = psCurl.split(/\s+/).find((arg) => arg.startsWith("http://") || arg.startsWith("https://"))
-      if (firstArg) {
-        url = firstArg
+    // Split by space, but not inside quotes. Handle escaped quotes.
+    // Also handle ^ for line breaks if present (though we won't generate them)
+    const parts = cmdCurl.replace(/\s*\^\s*\n\s*/g, " ").match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []
+
+    for (let i = 0; i < parts.length; i++) {
+      let part = parts[i]
+      // Remove outer quotes if present
+      if ((part.startsWith("'") && part.endsWith("'")) || (part.startsWith('"') && part.endsWith('"'))) {
+        part = part.substring(1, part.length - 1)
       }
-    }
 
-    // Extract Method
-    const methodMatch = psCurl.match(/-Method\s+['"]?(\w+)['"]?/)
-    if (methodMatch) {
-      method = methodMatch[1].toUpperCase()
-    }
-
-    // Extract Headers
-    const headerMatches = psCurl.matchAll(/-Headers\s+@\{([^}]+)\}/g)
-    for (const match of headerMatches) {
-      const headerContent = match[1]
-      const headerPairs = headerContent.split(";")
-      headerPairs.forEach((pair) => {
-        const [key, value] = pair.split("=").map((s) => s.trim().replace(/^['"]|['"]$/g, ""))
-        if (key && value) {
-          headers.push(`-H "${key}: ${value}"`)
-        }
-      })
-    }
-
-    // Extract Body
-    const bodyMatch = psCurl.match(/-Body\s+['"]?([^'"]+)['"]?/)
-    if (bodyMatch) {
-      body = bodyMatch[1]
+      if (part.startsWith("http://") || part.startsWith("https://")) {
+        url = part
+      } else if (part === "-X" && parts[i + 1]) {
+        method = parts[++i].replace(/^'|'$/g, "").toUpperCase()
+      } else if (part === "-H" && parts[i + 1]) {
+        const header = parts[++i].replace(/^"|"$/g, "") // Remove outer quotes
+        headers.push(`-H "${header}"`)
+      } else if (part === "-d" && parts[i + 1]) {
+        body = parts[++i].replace(/^"|"$/g, "").replace(/""/g, '"') // Remove outer quotes and unescape internal ""
+      }
     }
 
     if (url) {
       unixCurl += ` '${url}'`
     } else {
-      return "Error: Could not find URL in PowerShell curl command."
+      return "Error: Could not find URL in Windows CMD curl command."
     }
 
     if (method !== "GET") {
@@ -77,12 +63,12 @@ export default function CurlConverterPage() {
     return unixCurl
   }
 
-  // Unix curl to PowerShell Invoke-WebRequest
-  const convertUnixCurlToPowerShell = (unixCurl) => {
-    let psCurl = "Invoke-WebRequest"
+  // Unix curl to Windows Command Prompt curl
+  const convertUnixCurlToCmdCurl = (unixCurl) => {
+    let cmdCurl = "curl"
     let url = ""
     let method = "GET"
-    const headers = {}
+    const headers = []
     let body = ""
 
     // Split by space, but not inside quotes. Handle escaped quotes.
@@ -100,38 +86,34 @@ export default function CurlConverterPage() {
       } else if (part === "-X" && parts[i + 1]) {
         method = parts[++i].replace(/^'|'$/g, "").toUpperCase()
       } else if (part === "-H" && parts[i + 1]) {
-        const header = parts[++i].replace(/^"|"$/g, "") // Remove outer quotes
-        const [key, value] = header.split(":", 2).map((s) => s.trim())
-        if (key && value) {
-          headers[key] = value
-        }
+        const header = parts[++i].replace(/^"|"$/g, "").replace(/^'|'$/g, "") // Remove outer quotes (both types)
+        headers.push(`-H "${header}"`) // cmd.exe curl needs header string in double quotes
       } else if (part === "-d" && parts[i + 1]) {
-        body = parts[++i].replace(/^'|'$/g, "") // Remove outer quotes
+        body = parts[++i].replace(/^'|'$/g, "").replace(/^"|"$/g, "") // Remove outer quotes (both types)
       }
     }
 
     if (url) {
-      psCurl += ` -Uri '${url}'`
+      cmdCurl += ` "${url}"` // URL in double quotes
     } else {
       return "Error: Could not find URL in Unix curl command."
     }
 
     if (method !== "GET") {
-      psCurl += ` -Method ${method}`
+      cmdCurl += ` -X ${method}`
     }
 
-    if (Object.keys(headers).length > 0) {
-      const headerString = Object.entries(headers)
-        .map(([key, value]) => `'${key}'='${value}'`) // Use single quotes for keys and values in PowerShell hash table
-        .join(";")
-      psCurl += ` -Headers @{${headerString}}`
+    if (headers.length > 0) {
+      cmdCurl += ` ${headers.join(" ")}`
     }
 
     if (body) {
-      psCurl += ` -Body '${body}'`
+      // Escape double quotes within the body for cmd.exe
+      const escapedBody = body.replace(/"/g, '""')
+      cmdCurl += ` -d "${escapedBody}"` // Body in double quotes
     }
 
-    return psCurl
+    return cmdCurl // No ^ for line breaks by default
   }
 
   const handleConvert = () => {
@@ -142,9 +124,9 @@ export default function CurlConverterPage() {
 
     let converted = ""
     if (conversionType === "winToUnix") {
-      converted = convertPowerShellToUnixCurl(curlInput)
-    } else {
-      converted = convertUnixCurlToPowerShell(curlInput)
+      converted = convertCmdCurlToUnixCurl(curlInput)
+    } else if (conversionType === "unixToWin") {
+      converted = convertUnixCurlToCmdCurl(curlInput)
     }
     setCurlOutput(converted)
   }
@@ -158,7 +140,7 @@ export default function CurlConverterPage() {
     <Card className="w-full max-w-4xl">
       <CardHeader>
         <CardTitle className="text-2xl font-bold">Curl Command Converter</CardTitle>
-        <CardDescription>Convert curl commands between Windows PowerShell and Unix/macOS syntax.</CardDescription>
+        <CardDescription>Convert curl commands between Windows CMD and Unix/macOS syntax.</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="flex flex-col gap-4">
@@ -167,13 +149,13 @@ export default function CurlConverterPage() {
               variant={conversionType === "winToUnix" ? "default" : "outline"}
               onClick={() => setConversionType("winToUnix")}
             >
-              Windows (PowerShell) → Unix/macOS
+              Windows (CMD) → Unix/macOS
             </Button>
             <Button
               variant={conversionType === "unixToWin" ? "default" : "outline"}
               onClick={() => setConversionType("unixToWin")}
             >
-              Unix/macOS → Windows (PowerShell)
+              Unix/macOS → Windows (CMD)
             </Button>
           </div>
           <div>
@@ -182,8 +164,8 @@ export default function CurlConverterPage() {
               id="curl-input"
               placeholder={
                 conversionType === "winToUnix"
-                  ? "e.g., Invoke-WebRequest -Uri 'https://api.example.com/data' -Method POST -Headers @{ 'Content-Type'='application/json'; 'Authorization'='Bearer token' } -Body '{\"key\":\"value\"}'"
-                  : "e.g., curl -X POST 'https://api.example.com/data' -H 'Content-Type: application/json' -H 'Authorization: Bearer token' -d '{\"key\":\"value\"}'"
+                  ? `e.g., curl -X GET "https://api.example.com/data" -H "Accept: application/json" -H "Authorization: Bearer token"`
+                  : `e.g., curl -X GET 'https://api.example.com/data' -H 'Accept: application/json' -H 'Authorization: Bearer token'`
               }
               value={curlInput}
               onChange={(e) => setCurlInput(e.target.value)}
