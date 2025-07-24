@@ -143,6 +143,16 @@ export default function PasswordToolsPage() {
     checkPasswordStrength(checkedPassword)
   }, [checkedPassword, checkPasswordStrength])
 
+  // 強度ごとの色クラス
+  const strengthColorClass = {
+    green: "text-green-500",
+    lime: "text-lime-500",
+    yellow: "text-yellow-500",
+    orange: "text-orange-500",
+    red: "text-red-500",
+    gray: "text-gray-500",
+  }
+
   return (
     <Card className="w-full max-w-4xl">
       <CardHeader>
@@ -216,11 +226,29 @@ export default function PasswordToolsPage() {
             </div>
             <div className="space-y-2">
               <Label>
-                Strength: <span className={`font-bold text-${strengthColor}-500`}>{strengthText}</span>
+                Strength:{" "}
+                <span className={`font-bold ${strengthColorClass[strengthColor]}`}>
+                  {strengthText}
+                </span>
               </Label>
               <Progress
                 value={strengthScore}
-                className={`w-full [&::-webkit-progress-bar]:bg-gray-200 [&::-webkit-progress-value]:bg-${strengthColor}-500 dark:[&::-webkit-progress-bar]:bg-gray-700`}
+                className={`w-full
+      [&::-webkit-progress-bar]:bg-gray-200
+      ${
+        strengthColor === "green"
+          ? "[&::-webkit-progress-value]:bg-green-500"
+          : strengthColor === "lime"
+          ? "[&::-webkit-progress-value]:bg-lime-500"
+          : strengthColor === "yellow"
+          ? "[&::-webkit-progress-value]:bg-yellow-500"
+          : strengthColor === "orange"
+          ? "[&::-webkit-progress-value]:bg-orange-500"
+          : strengthColor === "red"
+          ? "[&::-webkit-progress-value]:bg-red-500"
+          : "[&::-webkit-progress-value]:bg-gray-500"
+      }
+      dark:[&::-webkit-progress-bar]:bg-gray-700`}
               />
             </div>
             <div className="text-sm text-muted-foreground">
