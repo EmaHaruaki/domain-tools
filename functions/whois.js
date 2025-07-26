@@ -1,51 +1,42 @@
-// Cloudflare Pages Functionsは、package.jsonに依存関係を記述することで
-// 自動的にnpmモジュールをインストールしてくれます。
-// そのため、whois-jsonを直接インポートできます。
-import whois from "whois-json"
-
-// Cloudflare Pages Functionsのエントリーポイント
 export async function onRequest(context) {
-  const { request } = context
+  const { request, env } = context
   const url = new URL(request.url)
   const domain = url.searchParams.get("domain")
 
-  // CORSヘッダー
   const headers = {
-    "Access-Control-Allow-Origin": "*", // すべてのオリジンからのアクセスを許可
+    "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
     "Content-Type": "application/json",
   }
 
-  // OPTIONSリクエストのハンドリング (CORSプリフライト)
+  // CORS プリフライト
   if (request.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: headers,
-    })
+    return new Response(null, { status: 204, headers })
   }
 
   if (!domain) {
-    return new Response(JSON.stringify({ error: "Domain parameter is required." }), {
-      status: 400,
-      headers: headers,
-    })
+    return new Response(JSON.stringify({ error: "Domain parameter is required." }), { status: 400, headers })
   }
 
   try {
-    const result = await whois.lookup(domain)
-    return new Response(JSON.stringify(result), {
-      status: 200,
-      headers: headers,
-    })
+    // 環境変数からAPIキーを取得
+    const apiKey = env.WHOISXML_API_KEY
+    if (!apiKey) throw new Error("API key is not configured on the server.")
+
+    // WhoisXML API エンドポイント
+    const apiUrl = `https://www.whoisxmlapi.com/whoisserver/WhoisService?apiKey=${apiKey}&domainName=${encodeURIComponent(
+      domain
+    )}&outputFormat=JSON`
+
+    const resp = await fetch(apiUrl)
+    if (!resp.ok) throw new Error(`WHOIS API request failed with status ${resp.status}`)
+
+    const data = await resp.json()
+
+    return new Response(JSON.stringify(data), { status: 200, headers })
   } catch (error) {
-    console.error("WHOIS lookup failed:", error)
-    return new Response(
-      JSON.stringify({ error: `Failed to retrieve WHOIS information for ${domain}. ${error.message || ""}` }),
-      {
-        status: 500,
-        headers: headers,
-      },
-    )
+    console.error("WHOIS API error:", error)
+    return new Response(JSON.stringify({ error: error.message }), { status: 500, headers })
   }
 }

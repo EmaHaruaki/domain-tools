@@ -19,29 +19,26 @@ export default function WhoisLookupPage() {
     setResults(null)
     setError(null)
 
-    if (!domain || typeof domain !== "string") {
-      setError("Please enter a domain name.")
-      setLoading(false)
-      return
-    }
-
-    // Basic domain format validation
+    // ドメイン簡易バリデーション
     const domainRegex = /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
-    if (!domainRegex.test(domain)) {
+    if (!domain || !domainRegex.test(domain)) {
       setError("Invalid domain format. Please use a format like example.com")
       setLoading(false)
       return
     }
 
     try {
-      // Cloudflare Pages Functionのエンドポイントを呼び出す
-      const response = await fetch(`/functions/whois?domain=${encodeURIComponent(domain)}`)
+      // 環境によってエンドポイント切り替え
+      const endpoint =
+        process.env.NODE_ENV === "development"
+          ? `/api/whois?domain=${encodeURIComponent(domain)}`
+          : `/functions/whois?domain=${encodeURIComponent(domain)}`
 
+      const response = await fetch(endpoint)
       if (!response.ok) {
         const errorData = await response.json()
         throw new Error(errorData.error || `HTTP error! status: ${response.status}`)
       }
-
       const data = await response.json()
       setResults(data)
     } catch (err) {
@@ -50,6 +47,25 @@ export default function WhoisLookupPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const renderWhoisData = (data) => {
+    if (!data.WhoisRecord) return <p>No WHOIS data found.</p>
+    const record = data.WhoisRecord
+    const rawText = record.registryData?.rawText || record.registryData?.rawtext
+    return (
+      <>
+        {rawText ? (
+          <pre className="overflow-auto rounded-md bg-gray-800 p-4 text-sm text-green-400">
+            {rawText}
+          </pre>
+        ) : (
+          <pre className="overflow-auto rounded-md bg-gray-800 p-4 text-sm text-green-400">
+            {JSON.stringify(record, null, 2)}
+          </pre>
+        )}
+      </>
+    )
   }
 
   return (
@@ -86,9 +102,7 @@ export default function WhoisLookupPage() {
         {results && (
           <div className="mt-8">
             <h3 className="mb-4 text-xl font-semibold">WHOIS Results for {domain}</h3>
-            <pre className="overflow-auto rounded-md bg-gray-800 p-4 text-sm text-green-400">
-              {JSON.stringify(results, null, 2)}
-            </pre>
+            {renderWhoisData(results)}
           </div>
         )}
       </CardContent>
