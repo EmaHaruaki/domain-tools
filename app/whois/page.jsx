@@ -28,11 +28,7 @@ export default function WhoisLookupPage() {
     }
 
     try {
-      // 環境によってエンドポイント切り替え
-      const endpoint =
-        process.env.NODE_ENV === "development"
-          ? `/api/whois?domain=${encodeURIComponent(domain)}`
-          : `/functions/whois?domain=${encodeURIComponent(domain)}`
+      const endpoint = `api/whois?domain=${encodeURIComponent(domain)}`
 
       const response = await fetch(endpoint)
       if (!response.ok) {
