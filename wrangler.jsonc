@@ -1,0 +1,7 @@
+{
+  "name": "my-worker",
+  "compatibility_date": "2022-07-12",
+  "build": {
+    "command": "npm run build"
+  }
+}
